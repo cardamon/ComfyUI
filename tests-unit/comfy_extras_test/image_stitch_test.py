@@ -252,3 +252,38 @@ class TestImageStitch:
         expected_image2_width = int(64 * (32/32))  # Resized to height 64
         expected_total_width = 48 + 8 + expected_image2_width
         assert result[0].shape[2] == expected_total_width
+
+    def test_autogrow_images_stitched_in_order(self):
+        """Test that extra autogrow images are stitched after image2 in order"""
+        node = ImageStitch()
+        image1 = torch.full((1, 32, 8, 3), 0.1)
+        image2 = torch.full((1, 32, 8, 3), 0.2)
+        image3 = torch.full((1, 32, 8, 3), 0.3)
+        image4 = torch.full((1, 32, 8, 3), 0.4)
+
+        result = node.stitch(image1, "right", False, 0, "white", image2, images={"image3": image3, "image4": image4})
+        assert torch.equal(result[0], torch.cat([image1, image2, image3, image4], dim=2))
+
+        result = node.stitch(image1, "up", False, 0, "white", image2, images={"image3": image3})
+        assert torch.equal(result[0], torch.cat([image3, image2, image1], dim=1))
+
+    def test_autogrow_images_with_spacing_and_size_matching(self):
+        """Test that every extra image is matched to image1 and separated by spacing"""
+        node = ImageStitch()
+        image1 = self.create_test_image(height=32, width=32)
+        image2 = self.create_test_image(height=64, width=64)
+        image3 = self.create_test_image(height=16, width=32)
+
+        result = node.stitch(image1, "right", True, 4, "white", image2, images={"image3": image3})
+
+        assert result[0].shape == (1, 32, 32 + 4 + 32 + 4 + 64, 3)
+
+    def test_autogrow_images_without_image2(self):
+        """Test that extra images are stitched when image2 is not connected"""
+        node = ImageStitch()
+        image1 = self.create_test_image(height=32, width=32)
+        image3 = self.create_test_image(height=32, width=24)
+
+        result = node.stitch(image1, "right", False, 0, "white", images={"image3": image3})
+
+        assert torch.equal(result[0], torch.cat([image1, image3], dim=2))

@@ -423,8 +423,8 @@ class ImageStitch(IO.ComfyNode):
             node_id="ImageStitch",
             search_aliases=["combine images", "join images", "concatenate images", "side by side"],
             display_name="Stitch Images",
-            description="Stitches image2 to image1 in the specified direction.\n"
-            "If image2 is not provided, returns image1 unchanged.\n"
+            description="Stitches image2 and any further images to image1 in the specified direction.\n"
+            "If no other image is provided, returns image1 unchanged.\n"
             "Optional spacing can be added between images.",
             category="image/transform",
             inputs=[
@@ -434,6 +434,15 @@ class ImageStitch(IO.ComfyNode):
                 IO.Int.Input("spacing_width", default=0, min=0, max=1024, step=2, advanced=True),
                 IO.Combo.Input("spacing_color", options=["white", "black", "red", "green", "blue"], default="white", advanced=True),
                 IO.Image.Input("image2", optional=True),
+                IO.Autogrow.Input(
+                    "images",
+                    optional=True,
+                    template=IO.Autogrow.TemplateNames(
+                        IO.Image.Input("image"),
+                        names=[f"image{i}" for i in range(3, 101)],
+                        min=0,
+                    ),
+                ),
             ],
             outputs=[IO.Image.Output()],
         )
@@ -447,10 +456,15 @@ class ImageStitch(IO.ComfyNode):
         spacing_width,
         spacing_color,
         image2=None,
+        images: IO.Autogrow.Type = None,
     ) -> IO.NodeOutput:
-        if image2 is None:
-            return IO.NodeOutput(image1)
+        for image in [image2, *(images or {}).values()]:
+            if image is not None:
+                image1 = cls._stitch(image1, image, direction, match_image_size, spacing_width, spacing_color)
+        return IO.NodeOutput(image1)
 
+    @staticmethod
+    def _stitch(image1, image2, direction, match_image_size, spacing_width, spacing_color):
         # Handle batch size differences
         if image1.shape[0] != image2.shape[0]:
             max_batch = max(image1.shape[0], image2.shape[0])
@@ -586,7 +600,7 @@ class ImageStitch(IO.ComfyNode):
             images.insert(1, spacing)
 
         concat_dim = 2 if direction in ["left", "right"] else 1
-        return IO.NodeOutput(torch.cat(images, dim=concat_dim))
+        return torch.cat(images, dim=concat_dim)
 
     stitch = execute  # TODO: remove
 
